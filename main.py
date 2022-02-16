@@ -25,6 +25,8 @@ def main():
 
     container = Container(pages)
 
+    print(container)
+
 def delete_directory(target_path):
     if not target_path:
         raise Exception('Invalid target path provided!')

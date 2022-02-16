@@ -45,14 +45,13 @@ class Container:
 
         employee_map = {}
         alias_elements = []
-        unrecognized_elements = []
 
         for element in self.employee_elements:
             if element.recognized_name:
                 employee = None
                 if element.full_name_hash in employee_map:
                     employee = employee_map[element.full_name_hash]
-                if element.full_name in self.name_aliases:
+                elif element.full_name in self.name_aliases:
                     alias_elements.append(element)
                 else:
                     employee = Employee(element.full_name_hash)
@@ -60,8 +59,6 @@ class Container:
 
                 if employee:
                     employee.process_element(element)
-            else:
-                unrecognized_elements.append(element)
 
         for alias in self.name_rules['aliases']:
             full_name_hash = utility.hash_name(alias['name'])
@@ -75,20 +72,14 @@ class Container:
                             employee_map[full_name_hash].process_element(alias_element)
                             break
 
+        self.employees = employee_map.values()
 
-        for value in sorted(employee_map.values(), key=lambda v: v.full_name_hash if len(v.last_names) == 0 else v.last_names[0]):
-            print(value)
+        for employee in self.employees:
+            if employee.manager_id:
+                for manager in self.employees:
+                    if manager.employee_id == employee.manager_id:
+                        employee.manager = manager.get_full_name()
 
-        # for alias in alias_elements:
-        #     print(alias)
-        #
-        if self.errors:
-            print('Error count: {}'.format(len(self.errors)))
-            for error in self.errors:
-                print(error)
-        else:
-            print('Completed without errors')
-            
 
     def process_dayforce_entry(self, url, response_json):
         if EmployeeElement.TYPE_DAYFORCE_MANAGED_EMPLOYEES in url:
@@ -99,3 +90,32 @@ class Container:
         if EmployeeElement.TYPE_SLACK_LIST in url:
             for element in response_json['results']:
                 self.employee_elements.append(EmployeeElement(EmployeeElement.TYPE_SLACK_LIST, element, self.name_rules))
+
+    def __str__(self):
+        result = ''
+        for value in sorted(self.employees, key=lambda v: v.full_name_hash if len(v.last_names) == 0 else v.last_names[0]):
+            result += '\n{}'.format(value)
+
+        result += '\n'
+        result += '\nUnrecognized elements:'
+        unrecognized_elements_shown = []
+        for element in self.employee_elements:
+            if not element.recognized_name:
+                if element.full_name_hash not in unrecognized_elements_shown:
+                    result += '\n\t{}'.format(element.full_name_hash)
+                    unrecognized_elements_shown.append(element.full_name_hash)
+
+        result += '\n'
+        result += '\nManager Count: \t{}'.format(len([x for x, e in enumerate(self.employees) if e.is_manager]))
+        result += '\nNonmanager Count: \t{}'.format(len([x for x, e in enumerate(self.employees) if not e.is_manager]))
+        result += '\nEmployee Count: \t{}'.format(len(self.employees))
+
+        result += '\n'
+        if self.errors:
+            result += '\nError count: {}'.format(len(self.errors))
+            for error in self.errors:
+                result += '\n{}'.format(error)
+        else:
+            result += '\n{}'.format('Completed without errors')
+
+        return result
