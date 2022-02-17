@@ -14,7 +14,6 @@ class Employee:
         self.is_manager = False
         self.manager = None
         self.manager_id = None
-        self.possible_contractor = False
         self.in_dayforce = False
         self.in_slack = False
         self.last_name_count = 0

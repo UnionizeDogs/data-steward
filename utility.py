@@ -1,5 +1,4 @@
 import sys
-import re
 from pathlib import Path
 from names_dataset import NameDataset
 from unidecode import unidecode

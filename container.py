@@ -1,5 +1,6 @@
 import json
 import re
+import csv
 import utility
 from employee_element import EmployeeElement
 from employee import Employee
@@ -173,12 +174,76 @@ class Container:
         else:
             self.errors.append('No format specified')
 
+        csv_rules = self.rules.get('csv')
+        if csv_rules and csv_rules.get('path'):
+            csv_key_column = csv_rules.get('key_column')
+            if csv_key_column:
+                csv_path = utility.RESOURCES_PATH.joinpath(csv_rules.get('path'))
+                if csv_path.exists():
+                    with open(csv_path, 'r') as csv_raw:
+                        csv_reader = csv.DictReader(csv_raw)
+                        for row in csv_reader:
+                            row_full_name_hash = utility.hash_name(row.get(csv_key_column))
+                            if row_full_name_hash:
+                                employee_missing = True
+                                for employee in self.employees:
+                                    if employee.full_name_hash == row_full_name_hash:
+                                        employee_missing = False
+
+                                        for csv_column, csv_values in csv_rules.get('columns', {}).items():
+                                            pass
+
+                                        break
+                                if employee_missing:
+                                    self.errors.append('Unable to find employee from csv with name and hash: {} {}'.format(row.get(csv_key_column), row_full_name_hash))
+            else:
+                self.errors.append('No key_column specified in for csv')
+
+
         result += '\nFilter Matched {} Employee(s)'.format(len(filtered_employees))
 
         result += '\n\n' + self.get_errors()
 
         return result
 
+    def populate_str(self, format, employees = None, none_value = ''):
+        result = ''
+
+        if not employees:
+            employees = self.employees
+
+        if format:
+            format_fields = []
+
+            for format_field in format.split('$'):
+                format_field_stripped = re.sub(r'\W+', '', format_field)
+                if format_field_stripped:
+                    format_fields.append(format_field_stripped)
+
+            result += format.replace('$', '')
+            if employees:
+                for employee in employees:
+                    result_row = format
+                    for format_field in format_fields:
+                        format_field_result = employee[format_field]
+
+                        if not format_field_result:
+                            format_field_result = none_value
+
+                        if isinstance(format_field_result, list):
+                            format_field_list = format_field_result
+                            format_field_result = ''
+                            for format_field_element in format_field_list:
+                                format_field_result += str(format_field_element)
+
+                        result_row = result_row.replace('${}'.format(format_field), str(format_field_result), 1)
+                    result += result_row
+            else:
+                result += '--- No Employees Passed Filter ---'
+        else:
+            self.errors.append('No format specified')
+
+        return result
 
     def get_debug(self):
         result = 'Total Employee Elements: {}'.format(len(self.employee_elements))
