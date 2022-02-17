@@ -17,6 +17,7 @@ class Employee:
         self.possible_contractor = False
         self.in_dayforce = False
         self.in_slack = False
+        self.last_name_count = 0
 
     def process_element(self, element):
         self.elements.append(element)
@@ -44,11 +45,27 @@ class Employee:
         self.in_slack |= element.block_type in EmployeeElement.TYPES_SLACK
 
     def process_employees(self, employees):
+
+        manager_full_name_hash = utility.hash_name(self.manager)
+
+        for employee in employees:
+            if self.manager_id:
+                if not self.manager and employee.employee_id == self.manager_id:
+                    self.manager = employee.get_full_name()
+            elif self.manager:
+                if employee.full_name_hash == manager_full_name_hash:
+                    self.manager_id = employee.employee_id
+
+            if list(set(self.last_names) & set(employee.last_names)):
+                self.last_name_count += 1
+
+
         if self.manager_id:
             for manager in employees:
                 if manager.employee_id == self.manager_id:
                     self.manager = manager.get_full_name()
                     break
+
         elif self.manager:
             manager_full_name_hash = utility.hash_name(self.manager)
             for manager in employees:
@@ -59,10 +76,10 @@ class Employee:
     def get_full_name(self):
         result = ''
         if self.first_names:
-            result = sorted(self.first_names, key=lambda n: len(n))[0]
+            result = self.first_names[0]
         if self.last_names:
             result += ' '
-            result += sorted(self.last_names, key=lambda n: len(n))[0]
+            result += self.last_names[0]
         return result
 
     def __getitem__(self, item):
@@ -77,7 +94,8 @@ class Employee:
                 return None
 
             if isinstance(result, list):
-                return max(result, key=len)
+                return result[0]
+                # return max(result, key=len)
             else:
                 return result
 

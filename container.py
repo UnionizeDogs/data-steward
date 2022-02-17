@@ -14,15 +14,15 @@ class Container:
         self.employee_elements = []
         self.employees = []
         self.rules = None
-        self.name_aliases = []
+        self.name_variations = []
         self.errors = []
 
         if utility.RESOURCES_NAME_RULES.exists():
             with open(utility.RESOURCES_NAME_RULES, 'r') as name_rules_raw:
                 self.rules = json.loads(name_rules_raw.read())
                 for amendment in self.rules.get('amendments', []):
-                    for alias_variation in amendment.get('variations', []):
-                        self.name_aliases.append(alias_variation)
+                    for amendment_variation in amendment.get('variations', []):
+                        self.name_variations.append(utility.hash_name(amendment_variation))
 
         for page in pages:
             for entry in page.entries:
@@ -41,15 +41,16 @@ class Container:
                         pass
 
         employee_map = {}
-        alias_elements = []
+        variation_elements = []
 
-        for element in self.employee_elements:
+        # Force the Dayforce elements to be first since they typically have more accurate data.
+        for element in sorted(self.employee_elements, key=lambda e: 0 if e.block_type in EmployeeElement.TYPES_DAYFORCE else 1):
             if element.recognized_name:
                 employee = None
-                if element.full_name_hash in employee_map:
+                if element.full_name_hash in self.name_variations:
+                    variation_elements.append(element)
+                elif element.full_name_hash in employee_map:
                     employee = employee_map[element.full_name_hash]
-                elif element.full_name in self.name_aliases:
-                    alias_elements.append(element)
                 else:
                     employee = Employee(element.full_name_hash)
                     employee_map[employee.full_name_hash] = employee
@@ -57,24 +58,25 @@ class Container:
                 if employee:
                     employee.process_element(element)
 
-        for amendment in self.rules.get('amendments', []):
-            full_name_hash = utility.hash_name(amendment.get('name'))
-            if full_name_hash not in employee_map:
-                self.errors.append('Amendment "{}" has no valid elements'.format(amendment.get('name')))
-            else:
-                variations = amendment.get('variations')
-                if variations:
-                    for variation in variations:
-                        variation_full_name_hash = utility.hash_name(variation)
-                        for alias_element in alias_elements:
-                            if variation_full_name_hash == alias_element.full_name_hash:
-                                employee_map[full_name_hash].process_element(alias_element)
-                                break
-                manager = amendment.get('manager')
-                if manager:
-                    employee_map[full_name_hash].manager = manager
-
         self.employees = employee_map.values()
+
+        for amendment in self.rules.get('amendments', []):
+            not_found = True
+            for employee in self.employees:
+                if employee.get_full_name() == amendment.get('name'):
+                    not_found = False
+                    for variation in amendment.get('variations', []):
+                        variation_full_name_hash = utility.hash_name(variation)
+                        for variation_element in variation_elements:
+                            if variation_full_name_hash == variation_element.full_name_hash:
+                                employee.process_element(variation_element)
+                    manager = amendment.get('manager')
+                    if manager:
+                        employee.manager = manager
+                    break
+
+            if not_found:
+                self.errors.append('Amendment "{}" has no valid elements'.format(amendment.get('name')))
 
         for employee in self.employees:
             employee.process_employees(self.employees)
@@ -135,6 +137,8 @@ class Container:
                 if is_match_any and is_match_all and is_match_none:
                     filtered_employees.append(employee)
 
+        filtered_employees = sorted(filtered_employees, key=lambda e: (e[output.get('sorting', 'last_name')] or ''))
+
         result = ''
 
         format = output.get('format')
@@ -162,7 +166,7 @@ class Container:
                             for format_field_element in format_field_list:
                                 format_field_result += str(format_field_element)
 
-                        result_row = result_row.replace('${}'.format(format_field), str(format_field_result))
+                        result_row = result_row.replace('${}'.format(format_field), str(format_field_result), 1)
                     result += result_row
             else:
                 result += '--- No Employees Passed Filter ---'

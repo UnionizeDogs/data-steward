@@ -45,30 +45,30 @@ class EmployeeElement:
             self.title = self.block_json['profile']['title']
             self.inactive = self.block_json['deleted']
 
-        if rules:
-            for trim in rules['trims']:
-                self.first_name = self.first_name.replace(trim, '')
-                self.last_name = self.last_name.replace(trim, '')
+        rules_names = (rules or {}).get('names', {})
+
+        for trim in rules_names.get('trims', []):
+            self.first_name = self.first_name.replace(trim, '')
+            self.last_name = self.last_name.replace(trim, '')
 
         self.full_name = '{} {}'.format(self.first_name, self.last_name)
         self.full_name_hash = utility.hash_name(self.full_name)
 
         is_ignored = False
 
-        if rules:
-            for name_ignored in rules['ignored']:
-                if name_ignored.lower().strip() in self.first_name.lower().strip() or name_ignored.lower().strip() in self.last_name.lower().strip():
-                    is_ignored = True
-                    break
+        for name_ignored in rules_names.get('ignored', []):
+            if name_ignored.lower().strip() in self.first_name.lower().strip() or name_ignored.lower().strip() in self.last_name.lower().strip():
+                is_ignored = True
+                break
 
         if not is_ignored:
-            if not self.recognized_name and rules:
-                for name_valid in rules['valid']:
+            if not self.recognized_name:
+                for name_valid in rules_names.get('valid', []):
                     if name_valid.lower().strip() in self.first_name.lower().strip() or name_valid.lower().strip() in self.last_name.lower().strip():
                         self.recognized_name = True
                         break
 
-            if not self.recognized_name and rules['validate']:
+            if not self.recognized_name and rules_names.get('validate', False):
                 self.recognized_name = utility.is_recognized_name(self.first_name, self.last_name)
             else:
                 self.recognized_name = True

@@ -1,4 +1,5 @@
 import sys
+import re
 from pathlib import Path
 from names_dataset import NameDataset
 from unidecode import unidecode
@@ -14,7 +15,10 @@ class Cache:
     NAME_DATASET = None
 
 def hash_name(full_name):
-    return unidecode(full_name.replace(' ', '').lower())
+    if full_name:
+        return unidecode(full_name.replace(' ', '').lower())
+    else:
+        return None
 
 
 def is_recognized_name(first_name, last_name):
