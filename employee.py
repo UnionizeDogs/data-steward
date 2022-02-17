@@ -1,3 +1,6 @@
+import utility
+from employee_element import EmployeeElement
+
 class Employee:
 
     def __init__(self, full_name_hash):
@@ -11,13 +14,19 @@ class Employee:
         self.is_manager = False
         self.manager = None
         self.manager_id = None
+        self.possible_contractor = False
+        self.in_dayforce = False
+        self.in_slack = False
 
     def process_element(self, element):
         self.elements.append(element)
+
         if element.first_name and element.first_name not in self.first_names:
             self.first_names.append(element.first_name)
+
         if element.last_name and element.last_name not in self.last_names:
             self.last_names.append(element.last_name)
+
         if element.title and element.title not in self.titles:
             self.titles.append(element.title)
 
@@ -31,6 +40,22 @@ class Employee:
         if element.manager_id:
             self.manager_id = element.manager_id
 
+        self.in_dayforce |= element.block_type in EmployeeElement.TYPES_DAYFORCE
+        self.in_slack |= element.block_type in EmployeeElement.TYPES_SLACK
+
+    def process_employees(self, employees):
+        if self.manager_id:
+            for manager in employees:
+                if manager.employee_id == self.manager_id:
+                    self.manager = manager.get_full_name()
+                    break
+        elif self.manager:
+            manager_full_name_hash = utility.hash_name(self.manager)
+            for manager in employees:
+                if manager.full_name_hash == manager_full_name_hash:
+                    self.manager_id = manager.employee_id
+                    break
+
     def get_full_name(self):
         result = ''
         if self.first_names:
@@ -39,6 +64,26 @@ class Employee:
             result += ' '
             result += sorted(self.last_names, key=lambda n: len(n))[0]
         return result
+
+    def __getitem__(self, item):
+        if hasattr(self, item):
+            return getattr(self, item)
+
+        items = item + 's'
+
+        if hasattr(self, items):
+            result = getattr(self, items)
+            if not result:
+                return None
+
+            if isinstance(result, list):
+                return max(result, key=len)
+            else:
+                return result
+
+
+        raise AttributeError("'Employee' object has no attribute '{}' or '{}'".format(item, items))
+
 
     def __str__(self):
         result = self.get_full_name()

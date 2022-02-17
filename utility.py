@@ -5,7 +5,7 @@ from unidecode import unidecode
 
 PROJECT_PATH = Path(sys.path[0])
 RESOURCES_PATH = PROJECT_PATH.joinpath('resources')
-RESOURCES_NAME_RULES = RESOURCES_PATH.joinpath('name_rules.json')
+RESOURCES_NAME_RULES = RESOURCES_PATH.joinpath('rules.json')
 
 EXPORTS_PATH = PROJECT_PATH.joinpath('exports')
 EXPORTS_WARNING_PATH = EXPORTS_PATH.joinpath('___DO NOT SAVE HERE___.txt')
