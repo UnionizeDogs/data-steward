@@ -12,8 +12,7 @@ def main():
 
     if not utility.EXPORTS_WARNING_PATH.exists():
         with open(utility.EXPORTS_WARNING_PATH, "w") as warning_file:
-            print('Do not save any changes to this directory, it will be overwritten by the next operation!',
-                  file=warning_file)
+            print('Do not save any changes to this directory, it will be overwritten by the next operation!', file=warning_file)
 
     pages = []
 

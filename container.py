@@ -16,6 +16,9 @@ class Container:
         self.employees = []
         self.rules = None
         self.name_variations = []
+        self.csv_verifications = []
+        self.csv_additions = {}
+        self.csv_modifications = {}
         self.errors = []
 
         if utility.RESOURCES_NAME_RULES.exists():
@@ -144,35 +147,9 @@ class Container:
 
         format = output.get('format')
         if format:
-            format_fields = []
-
-            for format_field in format.split('$'):
-                format_field_stripped = re.sub(r'\W+', '', format_field)
-                if format_field_stripped:
-                    format_fields.append(format_field_stripped)
-
-            result += format.replace('$', '')
-            if filtered_employees:
-                for employee in filtered_employees:
-                    result_row = format
-                    for format_field in format_fields:
-                        format_field_result = employee[format_field]
-
-                        if not format_field_result:
-                            format_field_result = output.get('none_value', '')
-
-                        if isinstance(format_field_result, list):
-                            format_field_list = format_field_result
-                            format_field_result = ''
-                            for format_field_element in format_field_list:
-                                format_field_result += str(format_field_element)
-
-                        result_row = result_row.replace('${}'.format(format_field), str(format_field_result), 1)
-                    result += result_row
-            else:
-                result += '--- No Employees Passed Filter ---'
+            result = self.populate_str(format, filtered_employees, True, output.get('none_value', ''), self.rules.get('boolean_conversion'))
         else:
-            self.errors.append('No format specified')
+            self.errors.append('No output.format specified')
 
         csv_rules = self.rules.get('csv')
         if csv_rules and csv_rules.get('path'):
@@ -180,22 +157,56 @@ class Container:
             if csv_key_column:
                 csv_path = utility.RESOURCES_PATH.joinpath(csv_rules.get('path'))
                 if csv_path.exists():
-                    with open(csv_path, 'r') as csv_raw:
-                        csv_reader = csv.DictReader(csv_raw)
-                        for row in csv_reader:
-                            row_full_name_hash = utility.hash_name(row.get(csv_key_column))
-                            if row_full_name_hash:
-                                employee_missing = True
-                                for employee in self.employees:
-                                    if employee.full_name_hash == row_full_name_hash:
-                                        employee_missing = False
+                    with open(csv_path, 'r') as csv_import:
+                        csv_reader = csv.DictReader(csv_import)
 
-                                        for csv_column, csv_values in csv_rules.get('columns', {}).items():
-                                            pass
+                        csv_columns_skipped = []
+                        for csv_column, csv_format in csv_rules.get('columns', {}).items():
+                            if csv_column in csv_reader.fieldnames:
+                                if not csv_format:
+                                    csv_columns_skipped.append(csv_column)
+                                    self.errors.append('Null or empty format for column: {}'.format(csv_column))
+                                elif '$' not in csv_format:
+                                    csv_columns_skipped.append(csv_column)
+                                    self.errors.append('No value specified for replacement in column {}: {}'.format(csv_column, csv_format))
+                            else:
+                                csv_columns_skipped.append(csv_column)
+                                self.errors.append('Unrecognized csv column: {}'.format(csv_column))
 
-                                        break
-                                if employee_missing:
-                                    self.errors.append('Unable to find employee from csv with name and hash: {} {}'.format(row.get(csv_key_column), row_full_name_hash))
+                        with open(utility.EXPORTS_CSV_PATH, 'w', newline='') as csv_export:
+                            csv_writer = csv.DictWriter(csv_export, fieldnames=csv_reader.fieldnames)
+                            csv_writer.writeheader()
+
+                            for row in csv_reader:
+                                row_old = row.copy()
+                                row_full_name_hash = utility.hash_name(row.get(csv_key_column))
+                                if row_full_name_hash:
+                                    employee_missing = True
+                                    for employee in self.employees:
+                                        if employee.full_name_hash == row_full_name_hash:
+                                            employee_missing = False
+
+                                            for csv_column, csv_format in csv_rules.get('columns', {}).items():
+                                                if csv_column not in csv_columns_skipped:
+                                                    row[csv_column] = self.populate_str(csv_format, [employee], boolean_conversion=csv_rules.get('boolean_conversion'))
+
+                                            break
+                                    if employee_missing:
+                                        self.errors.append('Unable to find employee from csv with name and hash: {} {}'.format(row.get(csv_key_column), row_full_name_hash))
+                                    else:
+                                        if str(row) == str(row_old):
+                                            self.csv_verifications.append(row_full_name_hash)
+                                        else:
+                                            self.csv_modifications[row_full_name_hash] = row_old
+                                    csv_writer.writerow(row)
+
+                            for employee in self.employees:
+                                if employee.full_name_hash not in self.csv_verifications and employee.full_name_hash not in self.csv_modifications:
+                                    row = {}
+                                    for csv_column, csv_format in csv_rules.get('columns', {}).items():
+                                        if csv_column not in csv_columns_skipped:
+                                            row[csv_column] = self.populate_str(csv_format, [employee],boolean_conversion=csv_rules.get('boolean_conversion'))
+                                    csv_writer.writerow(row)
             else:
                 self.errors.append('No key_column specified in for csv')
 
@@ -206,7 +217,7 @@ class Container:
 
         return result
 
-    def populate_str(self, format, employees = None, none_value = ''):
+    def populate_str(self, format, employees=None, include_header=False, none_value='', boolean_conversion=None):
         result = ''
 
         if not employees:
@@ -220,28 +231,34 @@ class Container:
                 if format_field_stripped:
                     format_fields.append(format_field_stripped)
 
-            result += format.replace('$', '')
+            if include_header:
+                result += format.replace('$', '')
             if employees:
                 for employee in employees:
                     result_row = format
                     for format_field in format_fields:
                         format_field_result = employee[format_field]
 
-                        if not format_field_result:
-                            format_field_result = none_value
-
-                        if isinstance(format_field_result, list):
+                        if isinstance(format_field_result, bool):
+                            if boolean_conversion != None:
+                                if format_field_result:
+                                    format_field_result = boolean_conversion.get('True', 'TRUE')
+                                else:
+                                    format_field_result = boolean_conversion.get('False', 'FALSE')
+                        elif isinstance(format_field_result, list):
                             format_field_list = format_field_result
                             format_field_result = ''
                             for format_field_element in format_field_list:
                                 format_field_result += str(format_field_element)
+                        elif not format_field_result:
+                            format_field_result = none_value
 
                         result_row = result_row.replace('${}'.format(format_field), str(format_field_result), 1)
                     result += result_row
             else:
                 result += '--- No Employees Passed Filter ---'
         else:
-            self.errors.append('No format specified')
+            raise ValueError('No format specified')
 
         return result
 

@@ -9,6 +9,7 @@ RESOURCES_NAME_RULES = RESOURCES_PATH.joinpath('rules.json')
 
 EXPORTS_PATH = PROJECT_PATH.joinpath('exports')
 EXPORTS_WARNING_PATH = EXPORTS_PATH.joinpath('___DO NOT SAVE HERE___.txt')
+EXPORTS_CSV_PATH = EXPORTS_PATH.joinpath('employees.csv')
 
 class Cache:
     NAME_DATASET = None
