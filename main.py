@@ -16,6 +16,9 @@ def main():
 
     pages = []
 
+    if not utility.RESOURCES_PATH.exists():
+        utility.RESOURCES_PATH.mkdir()
+
     if utility.RESOURCES_PATH.exists():
         for item in utility.RESOURCES_PATH.iterdir():
             if item.is_file() and str(item).endswith('.har'):
