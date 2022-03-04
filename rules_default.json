@@ -1,0 +1,40 @@
+{
+  "names": {
+    "validate": false,
+    "ignored": [],
+    "valid": [],
+    "trims": [
+      "(they/them)",
+      "(she/her)",
+      "(he/him)",
+      "(ze/zir)",
+      "(fae/faer)"
+    ]
+  },
+  "ceo_title": [],
+  "amendments": [],
+  "debug": false,
+  "console":{
+    "filter": {
+      "any": {},
+      "all": {},
+      "none": {}
+    },
+    "format": "$first_name $last_name | $title | $is_manager\n",
+    "sorting": "last_name",
+    "none_value": "N/A"
+  },
+  "csv": {
+    "name": "Member Map.csv",
+    "key_column": "Name",
+    "columns": {
+      "Name": "$first_name $last_name",
+      "Role": "$title",
+      "Has Reports": "$is_manager"
+    },
+    "boolean_conversion": {
+      "True": "Yes",
+      "False": "No"
+    }
+  }
+}

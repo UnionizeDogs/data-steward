@@ -1,6 +1,8 @@
 import json
 import re
 import csv
+import shutil
+
 import utility
 from employee_element import EmployeeElement
 from employee import Employee
@@ -21,12 +23,14 @@ class Container:
         self.csv_modifications = {}
         self.errors = []
 
-        if utility.RESOURCES_NAME_RULES.exists():
-            with open(utility.RESOURCES_NAME_RULES, 'r') as name_rules_raw:
-                self.rules = json.loads(name_rules_raw.read())
-                for amendment in self.rules.get('amendments', []):
-                    for amendment_variation in amendment.get('variations', []):
-                        self.name_variations.append(utility.hash_name(amendment_variation))
+        if not utility.RESOURCES_RULES.exists():
+            shutil.copyfile(utility.PROJECT_RULES_DEFAULT, utility.RESOURCES_RULES)
+
+        with open(utility.RESOURCES_RULES, 'r') as name_rules_raw:
+            self.rules = json.loads(name_rules_raw.read())
+            for amendment in self.rules.get('amendments', []):
+                for amendment_variation in amendment.get('variations', []):
+                    self.name_variations.append(utility.hash_name(amendment_variation))
 
         for page in pages:
             for entry in page.entries:
@@ -106,9 +110,9 @@ class Container:
             return self.get_debug()
 
         filtered_employees = []
-        output = self.rules.get('output')
-        if output:
-            filter = output.get('filter')
+        console = self.rules.get('console')
+        if console:
+            filter = console.get('filter')
             is_match_default = not (filter.get('any') or filter.get('all') or filter.get('none'))
             for employee in self.employees:
                 if is_match_default:
@@ -141,72 +145,85 @@ class Container:
                 if is_match_any and is_match_all and is_match_none:
                     filtered_employees.append(employee)
 
-        filtered_employees = sorted(filtered_employees, key=lambda e: (e[output.get('sorting', 'last_name')] or ''))
+        filtered_employees = sorted(filtered_employees, key=lambda e: (e[console.get('sorting', 'last_name')] or ''))
 
         result = ''
 
-        format = output.get('format')
+        format = console.get('format')
         if format:
-            result = self.populate_str(format, filtered_employees, True, output.get('none_value', ''), self.rules.get('boolean_conversion'))
+            result = self.populate_str(format, filtered_employees, True, console.get('none_value', ''), self.rules.get('boolean_conversion'))
         else:
-            self.errors.append('No output.format specified')
+            self.errors.append('No console.format specified')
 
         csv_rules = self.rules.get('csv')
-        if csv_rules and csv_rules.get('path'):
+        if csv_rules and csv_rules.get('name'):
             csv_key_column = csv_rules.get('key_column')
             if csv_key_column:
-                csv_path = utility.RESOURCES_PATH.joinpath(csv_rules.get('path'))
+                csv_reader = None
+                csv_columns_skipped = []
+
+                csv_path = utility.RESOURCES_PATH.joinpath(csv_rules.get('name'))
                 if csv_path.exists():
                     with open(csv_path, 'r') as csv_import:
                         csv_reader = csv.DictReader(csv_import)
 
-                        csv_columns_skipped = []
-                        for csv_column, csv_format in csv_rules.get('columns', {}).items():
-                            if csv_column in csv_reader.fieldnames:
-                                if not csv_format:
-                                    csv_columns_skipped.append(csv_column)
-                                    self.errors.append('Null or empty format for column: {}'.format(csv_column))
-                                elif '$' not in csv_format:
-                                    csv_columns_skipped.append(csv_column)
-                                    self.errors.append('No value specified for replacement in column {}: {}'.format(csv_column, csv_format))
-                            else:
+                if csv_reader:
+                    for csv_column, csv_format in csv_rules.get('columns', {}).items():
+                        if csv_column in csv_reader.fieldnames:
+                            if not csv_format:
                                 csv_columns_skipped.append(csv_column)
-                                self.errors.append('Unrecognized csv column: {}'.format(csv_column))
+                                self.errors.append('Null or empty format for column: {}'.format(csv_column))
+                            elif '$' not in csv_format:
+                                csv_columns_skipped.append(csv_column)
+                                self.errors.append(
+                                    'No value specified for replacement in column {}: {}'.format(csv_column,
+                                                                                                 csv_format))
+                        else:
+                            csv_columns_skipped.append(csv_column)
+                            self.errors.append('Unrecognized csv column: {}'.format(csv_column))
+                else:
+                    csv_reader = csv.DictReader({}, fieldnames=csv_rules.get('columns', {}).keys())
 
-                        with open(utility.EXPORTS_CSV_PATH, 'w', newline='') as csv_export:
-                            csv_writer = csv.DictWriter(csv_export, fieldnames=csv_reader.fieldnames)
-                            csv_writer.writeheader()
+                with open(utility.EXPORTS_PATH.joinpath(csv_rules.get('name')), 'w', newline='') as csv_export:
+                    csv_writer = csv.DictWriter(csv_export, fieldnames=csv_reader.fieldnames)
+                    csv_writer.writeheader()
 
-                            for row in csv_reader:
-                                row_old = row.copy()
-                                row_full_name_hash = utility.hash_name(row.get(csv_key_column))
-                                if row_full_name_hash:
-                                    employee_missing = True
-                                    for employee in self.employees:
-                                        if employee.full_name_hash == row_full_name_hash:
-                                            employee_missing = False
-
-                                            for csv_column, csv_format in csv_rules.get('columns', {}).items():
-                                                if csv_column not in csv_columns_skipped:
-                                                    row[csv_column] = self.populate_str(csv_format, [employee], boolean_conversion=csv_rules.get('boolean_conversion'))
-
-                                            break
-                                    if employee_missing:
-                                        self.errors.append('Unable to find employee from csv with name and hash: {} {}'.format(row.get(csv_key_column), row_full_name_hash))
-                                    else:
-                                        if str(row) == str(row_old):
-                                            self.csv_verifications.append(row_full_name_hash)
-                                        else:
-                                            self.csv_modifications[row_full_name_hash] = row_old
-                                    csv_writer.writerow(row)
-
+                    for row in csv_reader:
+                        row_old = row.copy()
+                        row_full_name_hash = utility.hash_name(row.get(csv_key_column))
+                        if row_full_name_hash:
+                            employee_missing = True
                             for employee in self.employees:
-                                if employee.full_name_hash not in self.csv_verifications and employee.full_name_hash not in self.csv_modifications:
-                                    row = {}
+                                if employee.full_name_hash == row_full_name_hash:
+                                    employee_missing = False
+
                                     for csv_column, csv_format in csv_rules.get('columns', {}).items():
                                         if csv_column not in csv_columns_skipped:
-                                            row[csv_column] = self.populate_str(csv_format, [employee],boolean_conversion=csv_rules.get('boolean_conversion'))
-                                    csv_writer.writerow(row)
+                                            row[csv_column] = self.populate_str(csv_format, [employee],
+                                                                                boolean_conversion=csv_rules.get(
+                                                                                    'boolean_conversion'))
+
+                                    break
+                            if employee_missing:
+                                self.errors.append(
+                                    'Unable to find employee from csv with name and hash: {} {}'.format(
+                                        row.get(csv_key_column), row_full_name_hash))
+                            else:
+                                if str(row) == str(row_old):
+                                    self.csv_verifications.append(row_full_name_hash)
+                                else:
+                                    self.csv_modifications[row_full_name_hash] = row_old
+                            csv_writer.writerow(row)
+
+                    for employee in self.employees:
+                        if employee.full_name_hash not in self.csv_verifications and employee.full_name_hash not in self.csv_modifications:
+                            row = {}
+                            for csv_column, csv_format in csv_rules.get('columns', {}).items():
+                                if csv_column not in csv_columns_skipped:
+                                    row[csv_column] = self.populate_str(csv_format, [employee],
+                                                                        boolean_conversion=csv_rules.get(
+                                                                            'boolean_conversion'))
+                            csv_writer.writerow(row)
             else:
                 self.errors.append('No key_column specified in for csv')
 
