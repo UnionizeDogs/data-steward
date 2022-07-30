@@ -2,6 +2,12 @@ import utility
 
 class EmployeeElement:
 
+    TYPE_OUTLOOK_FIND_PEOPLE = 'FindPeople'
+
+    TYPES_OUTLOOK = [
+        TYPE_OUTLOOK_FIND_PEOPLE
+    ]
+
     TYPE_DAYFORCE_MANAGED_EMPLOYEES = 'GetManagedEmployees'
     TYPE_DAYFORCE_EMPLOYEE_MANAGERS = 'GetEmployeeManagers'
 
@@ -29,8 +35,14 @@ class EmployeeElement:
         self.employee_id = None
         self.is_manager = False
         self.manager_id = None
+        self.is_contractor = False
 
-        if block_type in self.TYPES_DAYFORCE:
+        if block_type in self.TYPES_OUTLOOK:
+            self.first_name = block_json.get('GivenName')
+            self.last_name = block_json.get('Surname')
+            self.title = self.block_json.get('Title')
+            self.is_contractor = 'C' in block_json.get('DisplayName')
+        elif block_type in self.TYPES_DAYFORCE:
             names = self.block_json['DisplayName'].split(', ')
             self.first_name = names[-1]
             self.last_name = names[0]
@@ -38,7 +50,6 @@ class EmployeeElement:
             self.employee_id = self.block_json['EmployeeId']
             self.is_manager = 0 < self.block_json['ManagedEmployeesCount']
             self.manager_id = self.block_json['ManagerId']
-
         elif block_type == self.TYPE_SLACK_LIST:
             self.first_name = self.block_json['profile']['first_name']
             self.last_name = self.block_json['profile']['last_name']
@@ -48,8 +59,10 @@ class EmployeeElement:
         rules_names = (rules or {}).get('names', {})
 
         for trim in rules_names.get('trims', []):
-            self.first_name = self.first_name.replace(trim, '')
-            self.last_name = self.last_name.replace(trim, '')
+            if self.first_name:
+                self.first_name = self.first_name.replace(trim, '')
+            if self.last_name:
+                self.last_name = self.last_name.replace(trim, '')
 
         self.full_name = '{} {}'.format(self.first_name, self.last_name)
         self.full_name_hash = utility.hash_name(self.full_name)

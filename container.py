@@ -7,8 +7,12 @@ import utility
 from employee_element import EmployeeElement
 from employee import Employee
 
+OUTLOOK_URL_FRAGMENT = 'outlook.office'
+
 DAYFORCE_URL_FRAGMENT = '.dayforcehcm.com'
+
 SLACK_URL_FRAGMENT = '.slack.com'
+
 
 class Container:
 
@@ -41,7 +45,9 @@ class Container:
                 if entry.response and entry.response.mimeType == 'application/json':
                     try:
                         response_json = json.loads(entry.response.text)
-                        if DAYFORCE_URL_FRAGMENT in entry.url:
+                        if OUTLOOK_URL_FRAGMENT in entry.url:
+                            self.process_outlook_entry(entry.url, response_json)
+                        elif DAYFORCE_URL_FRAGMENT in entry.url:
                             self.process_dayforce_entry(entry.url, response_json)
                         elif SLACK_URL_FRAGMENT in entry.url:
                             self.process_slack_entry(entry.url, response_json)
@@ -89,6 +95,14 @@ class Container:
         for employee in self.employees:
             employee.process_employees(self.employees)
 
+    def process_outlook_entry(self, url, response_json):
+        if EmployeeElement.TYPE_OUTLOOK_FIND_PEOPLE in url:
+            if response_json['Body']:
+                response_result_set = response_json['Body']['ResultSet']
+                if response_result_set and isinstance(response_result_set, list):
+                    print(url)
+                    for element in response_result_set:
+                        self.employee_elements.append(EmployeeElement(EmployeeElement.TYPE_OUTLOOK_FIND_PEOPLE, element, self.rules))
 
     def process_dayforce_entry(self, url, response_json):
         if EmployeeElement.TYPE_DAYFORCE_MANAGED_EMPLOYEES or EmployeeElement.TYPE_DAYFORCE_EMPLOYEE_MANAGERS in url:
